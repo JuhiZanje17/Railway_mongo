@@ -1,0 +1,50 @@
+<html>
+    <head>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
+        <link rel="stylesheet" href="https://cdn.datatables.net/1.10.23/css/jquery.dataTables.min.css">
+        <script src="https://cdn.datatables.net/1.10.23/js/jquery.dataTables.min.js"></script>
+        <style>
+            table,th,td{
+                border:1px solid black;
+                border-collapse:collapse;
+            }
+        </style>
+    </head>
+        <body>
+            <table>
+                <tr>
+                    <td>TrainNo</td>
+                    <td>TrainName</td>
+                    <td>SEQ</td>
+                    <td>StationCode</td>
+                    <td>StationName</td>
+                    <td>ArrivalTime</td>
+                    <td>DepartureTime</td>
+                    <td>Distance</td>
+                    <td>SourcetSation</td>
+                    <td>SourceStationName</td>
+                    <td>DestinationStation</td>
+                    <td>DestinationStationName</td>
+                </tr>
+              <tbody  id="tab"></tbody>
+            </table>
+        </body>
+</html>
+
+<script>
+    fetch('http://localhost:8080/fetch')
+    .then(response=>response.json())
+    .then(data=>{
+        for(i=1;i<10;i++)//data.length
+        {
+            $('#tab').append("<tr><td>"+data[i]['TrainNo']+"</td><td>"+data[i]['TrainName']+"</td><td>"+data[i]['SEQ']+
+                "</td><td>"+data[i]['StationCode']+"</td><td>"+data[i]['StationName']+"</td><td>"+data[i]['ArrivalTime']+
+                    "</td><td>"+data[i]['DepartureTime']+"</td><td>"+data[i]['Distance']+"</td><td>"+data[i]['SourcetSation']+
+                        "</td><td>"+data[i]['SourceStationName']+ "</td><td>"+data[i]['DestinationStation']+ "</td><td>"+
+                            data[i]['DestinationStationName']+"</td></tr>")
+            console.log(data[i]['DestinationStation'])
+        }        
+    })
+</script>

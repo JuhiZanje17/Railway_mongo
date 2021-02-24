@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -17,12 +17,7 @@ import (
 )
 
 const (
-	mongoURL        = "mongodb://localhost:27017"
-	channelCapacity = 20
-)
-
-var (
-	ch = make(chan bool, channelCapacity)
+	mongoURL = "mongodb://localhost:27017"
 )
 
 type Train struct {
@@ -83,7 +78,7 @@ func getCollection() (*mongo.Collection, *mongo.Client) {
 	return trainCollection, client
 }
 
-func insertData() {
+func insertData(wg *sync.WaitGroup) {
 
 	trainCollection, client := getCollection()
 	defer client.Disconnect(context.TODO())
@@ -96,11 +91,11 @@ func insertData() {
 
 	// Loop through lines & turn into object
 	for _, line := range lines {
-		ch <- true
+		wg.Add(1)
 		count++
 
 		go func() {
-
+			defer wg.Done()
 			data := Train{
 				TrainNo:                line[0],
 				TrainName:              line[1],
@@ -120,15 +115,30 @@ func insertData() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			<-ch
 		}()
 		// break
+		wg.Wait()
 
 	}
-	for i := 0; i < channelCapacity; i++ {
-		ch <- true
-	}
 	fmt.Println("Done", count)
+
+}
+
+func main() {
+
+	var wg sync.WaitGroup
+	start := time.Now()
+	insertData(&wg)
+
+	elapsed := time.Since(start)
+	log.Printf("Time taken %s", elapsed)
+
+	fs := http.FileServer(http.Dir("static/"))
+	http.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	http.HandleFunc("/fetch", fetchFun)
+
+	http.ListenAndServe(":8080", nil)
 
 }
 
@@ -163,31 +173,5 @@ func fetchFun(w http.ResponseWriter, r *http.Request) {
 
 	res, _ := json.Marshal(issues)
 	w.Write(res)
-
-}
-
-func main() {
-
-	boolInsert := flag.Bool("fork", false, "a bool")
-	flag.Parse()
-
-	if *boolInsert {
-		insertData()
-	} else {
-		fmt.Println("NO such file")
-	}
-
-	start := time.Now()
-	//insertData()
-
-	elapsed := time.Since(start)
-	log.Printf("Time taken %s", elapsed)
-
-	fs := http.FileServer(http.Dir("static/"))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
-
-	http.HandleFunc("/fetch", fetchFun)
-
-	http.ListenAndServe(":8080", nil)
 
 }

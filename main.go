@@ -161,7 +161,7 @@ func fetchFun(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Error occurred")
 	}
 	page, _ := strconv.Atoi(param[0])
-	fmt.Println(page)
+	//fmt.Println(page)
 
 	option := options.Find()
 	option.SetLimit(15)

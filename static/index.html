@@ -1,86 +1,109 @@
-<html>
-    <head>
-        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
-        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
-        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
-        <link rel="stylesheet" href="https://cdn.datatables.net/1.10.23/css/jquery.dataTables.min.css">
-        <script src="https://cdn.datatables.net/1.10.23/js/jquery.dataTables.min.js"></script>
+<!DOCTYPE html> 
+<html lang="en"> 
+    <head> 
+       
+        <meta charset="UTF-8" /> 
+        <meta name="viewport" 
+              content="width=device-width, initial-scale=1.0" /> 
+        <title>Document</title> 
         <style>
             table,th,td{
                 border:1px solid black;
                 border-collapse:collapse;
             }
         </style>
-    </head>
-        <body>
-            <table id="tab"> 
-                <thead>
-                <tr>
-                    <td>TrainNo</td>
-                    <td>TrainName</td>
-                    <td>SEQ</td>
-                    <td>StationCode</td>
-                    <td>StationName</td>
-                    <td>ArrivalTime</td>
-                    <td>DepartureTime</td>
-                    <td>Distance</td>
-                    <td>SourcetSation</td>
-                    <td>SourceStationName</td>
-                    <td>DestinationStation</td>
-                    <td>DestinationStationName</td>
-                </tr>
-            </thead>
-                <tbody>
-                    <tr></tr>
-                </tbody>
-            </table>
-            
-        </body>
-</html>
-
+    </head> 
+    <body> 
+        <!-- Here a loader is created which  
+             loads till response comes -->
+        <div class="d-flex justify-content-center"> 
+            <div class="spinner-border" 
+                 role="status" id="loading"> 
+                <span class="sr-only">Loading...</span> 
+            </div> 
+        </div> 
+        <h1>Trains</h1> 
+        <button onclick="nextFun()">next</button>
+        <button onclick="prevFun()">prev</button>
+    
+        <!-- table for showing data -->
+        <table id="employees"></table> 
+    </body> 
+</html> 
 <script>
+    window.count=0
 
-    fetch('http://localhost:8080/fetch')
-    .then(response=>response.json())
-    .then(data=>{
-            
-            window.dataset=[];
+    function nextFun(){
+        count++               
+        getapi(); 
+    }
 
-            for(var i=0;i<data.length;i++)
-            {
-                window.dataArr=[];
-                var j=i+1;
-                dataArr.push(j);
-                dataArr.push(data[i]['TrainNo']);
-                dataArr.push(data[i]['TrainName']);
-                dataArr.push(data[i]['SEQ']);
-                dataArr.push(data[i]['StationCode']);
-                dataArr.push(data[i]['StationName']);
-                dataArr.push(data[i]['ArrivalTime']);
-                dataArr.push(data[i]['DepartureTime']);
-                dataArr.push(data[i]['Distance']);
-                dataArr.push(data[i]['SourcetSation']);
-                dataArr.push(data[i]['SourceStationName']);
-                dataArr.push(data[i]['DestinationStation']);
-                dataArr.push(data[i]['DestinationStationName']);
-                dataset.push(dataArr)
-            }
+    function prevFun(){
+        if(count==0){
+            return
+        }  
+        count--          
+        getapi(); 
+    }
 
-            $('#tab').DataTable( {
-                data: dataset,
-            } );
+// Defining async function 
+async function getapi() { 
 
-        
-      
-    })
+    var url=  "http://localhost:8080/fetch?page="+count;   
+
+    const response = await fetch(url); 
+    
+    var data = await response.json(); 
+    
+    if (response) { 
+        hideloader(); 
+    } 
+    show(data); 
+} 
+// Calling that async function 
+getapi(); 
+  
+// Function to hide the loader 
+function hideloader() { 
+    document.getElementById('loading').style.display = 'none'; 
+} 
+// Function to define innerHTML for HTML table 
+function show(data) { 
+    let tab =  
+        `<tr> 
+          <th>TrainNo</th> 
+          <th>TrainName</th> 
+          <th>SEQ</th> 
+          <th>StationCode</th> 
+          <th>StationName</th> 
+          <th>ArrivalTime</th> 
+          <th>DepartureTime</th> 
+          <th>Distance</th> 
+          <th>SourcetSation</th> 
+          <th>SourceStationName</th> 
+          <th>DestinationStation</th> 
+          <th>DestinationStationName</th> 
+         </tr>`; 
+    
+    // Loop to access all rows  
+    //console.log(data.list)
+    for(var i=0;i<data.length;i++){ 
+        tab += `<tr>  
+    <td>${data[i]['TrainNo']} </td> 
+    <td>${data[i]['TrainName']} </td> 
+    <td>${data[i]['SEQ']} </td> 
+    <td>${data[i]['StationCode']} </td> 
+    <td>${data[i]['StationName']} </td> 
+    <td>${data[i]['ArrivalTime']} </td> 
+    <td>${data[i]['DepartureTime']} </td> 
+    <td>${data[i]['Distance']} </td> 
+    <td>${data[i]['SourcetSation']} </td> 
+    <td>${data[i]['SourceStationName']} </td> 
+    <td>${data[i]['DestinationStation']} </td> 
+    <td>${data[i]['DestinationStationName']} </td> 
+</tr>`; 
+    } 
+    // Setting innerHTML as tab variable 
+    document.getElementById("employees").innerHTML = tab; 
+} 
 </script>
-
-<!-- // for(i=1;i<10;i++)//data.length
-// {
-    //     $('#tab').append("<tr><td>"+data[i]['TrainNo']+"</td><td>"+data[i]['TrainName']+"</td><td>"+data[i]['SEQ']+
-    //         "</td><td>"+data[i]['StationCode']+"</td><td>"+data[i]['StationName']+"</td><td>"+data[i]['ArrivalTime']+
-    //             "</td><td>"+data[i]['DepartureTime']+"</td><td>"+data[i]['Distance']+"</td><td>"+data[i]['SourcetSation']+
-    //                 "</td><td>"+data[i]['SourceStationName']+ "</td><td>"+data[i]['DestinationStation']+ "</td><td>"+
-    //                     data[i]['DestinationStationName']+"</td></tr>")
-    //     console.log(data[i]['DestinationStation'])
-    // }   -->

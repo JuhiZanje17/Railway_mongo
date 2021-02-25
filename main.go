@@ -9,15 +9,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
+	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 const (
-	mongoURL        = "mongodb://localhost:27017"
 	channelCapacity = 20
 )
 
@@ -38,6 +39,18 @@ type Train struct {
 	SourceStationName      string `bson:"SourceStationName"`
 	DestinationStation     string `bson:"DestinationStation"`
 	DestinationStationName string `bson:"DestinationStationName"`
+}
+
+func getCredentials(key string) string {
+
+	// load .env file
+	err := godotenv.Load("../Cred.env")
+
+	if err != nil {
+		log.Fatalf("Error loading .env file", err)
+	}
+
+	return os.Getenv(key)
 }
 
 // ReadCsv accepts a file and returns its content as a multi-dimentional type
@@ -61,6 +74,9 @@ func ReadCsv(filename string) ([][]string, error) {
 }
 
 func getCollection() (*mongo.Collection, *mongo.Client) {
+
+	mongoURL := getCredentials("MONGO_URL")
+	db, collection := getCredentials("DB"), getCredentials("COLLECTION")
 	// Set client options
 	clientOptions := options.Client().ApplyURI(mongoURL)
 
@@ -79,7 +95,7 @@ func getCollection() (*mongo.Collection, *mongo.Client) {
 	}
 
 	fmt.Println("Connected to MongoDB!")
-	trainCollection := client.Database("railway_data").Collection("trains")
+	trainCollection := client.Database(db).Collection(collection)
 	return trainCollection, client
 }
 
@@ -90,7 +106,7 @@ func insertData() {
 
 	lines, err := ReadCsv("Indian_railway1.csv")
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
 	}
 	count := 0
 
@@ -139,17 +155,29 @@ func fetchFun(w http.ResponseWriter, r *http.Request) {
 	//Define filter query for fetching specific document from collection
 	filter := bson.D{{}} //bson.D{{}} specifies 'all documents'
 	issues := []Train{}
+
+	param, ok := r.URL.Query()["page"]
+	if !ok {
+		fmt.Println("Error occurred")
+	}
+	page, _ := strconv.Atoi(param[0])
+	fmt.Println(page)
+
+	option := options.Find()
+	option.SetLimit(15)
+	option.SetSkip(int64(page * 10))
+
 	//Perform Find operation & validate against the error.
-	cur, findError := collection.Find(context.TODO(), filter)
+	cur, findError := collection.Find(context.TODO(), filter, option)
 	if findError != nil {
-		panic(findError)
+		fmt.Println(findError)
 	}
 	//Map result to slice
 	for cur.Next(context.TODO()) {
 		t := Train{}
 		err := cur.Decode(&t)
 		if err != nil {
-			panic(err)
+			fmt.Println(err)
 		}
 		//fmt.Println(t)
 		issues = append(issues, t)
@@ -157,7 +185,7 @@ func fetchFun(w http.ResponseWriter, r *http.Request) {
 	// once exhausted, close the cursor
 	cur.Close(context.TODO())
 	if len(issues) == 0 {
-		panic(mongo.ErrNoDocuments)
+		fmt.Println(mongo.ErrNoDocuments)
 	}
 	//fmt.Println(issues)
 
@@ -168,17 +196,16 @@ func fetchFun(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	boolInsert := flag.Bool("fork", false, "a bool")
+	boolInsert := flag.Bool("insert", false, "a bool")
 	flag.Parse()
 
 	if *boolInsert {
 		insertData()
 	} else {
-		fmt.Println("NO such file")
+		fmt.Println("not inserted")
 	}
 
 	start := time.Now()
-	//insertData()
 
 	elapsed := time.Since(start)
 	log.Printf("Time taken %s", elapsed)

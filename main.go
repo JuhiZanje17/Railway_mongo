@@ -14,6 +14,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -29,12 +30,12 @@ var (
 type Train struct {
 	TrainNo                string `bson:"TrainNo"`
 	TrainName              string `bson:"TrainName"`
-	SEQ                    string `bson:"SEQ"`
+	SEQ                    int    `bson:"SEQ"`
 	StationCode            string `bson:"StationCode"`
 	StationName            string `bson:"StationName"`
 	ArrivalTime            string `bson:"ArrivalTime"`
 	DepartureTime          string `bson:"DepartureTime"`
-	Distance               string `bson:"Distance"`
+	Distance               int    `bson:"Distance"`
 	SourcetSation          string `bson:"SourcetSation"`
 	SourceStationName      string `bson:"SourceStationName"`
 	DestinationStation     string `bson:"DestinationStation"`
@@ -114,18 +115,20 @@ func insertData() {
 	for _, line := range lines {
 		ch <- true
 		count++
+		seq, _ := strconv.Atoi(line[2])
+		dis, _ := strconv.Atoi(line[7])
 
-		go func() {
+		go func(line []string) {
 
 			data := Train{
 				TrainNo:                line[0],
 				TrainName:              line[1],
-				SEQ:                    line[2],
+				SEQ:                    seq,
 				StationCode:            line[3],
 				StationName:            line[4],
 				ArrivalTime:            line[5],
 				DepartureTime:          line[6],
-				Distance:               line[7],
+				Distance:               dis,
 				SourcetSation:          line[8],
 				SourceStationName:      line[9],
 				DestinationStation:     line[10],
@@ -137,8 +140,7 @@ func insertData() {
 				log.Fatal(err)
 			}
 			<-ch
-		}()
-		// break
+		}(line)
 
 	}
 	for i := 0; i < channelCapacity; i++ {
@@ -194,6 +196,94 @@ func fetchFun(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func searchFun(w http.ResponseWriter, r *http.Request) {
+
+	collection, client := getCollection()
+	defer client.Disconnect(context.TODO())
+	var query primitive.D
+
+	if trainNo, ok := r.URL.Query()["tNo"]; ok {
+		fmt.Println(trainNo[0])
+		query = append(query, bson.E{"TrainNo", trainNo[0]})
+	}
+
+	if arrivalTime, ok := r.URL.Query()["aTime"]; ok {
+		query = append(query, bson.E{"ArrivalTime", arrivalTime[0]})
+	}
+
+	if departureTime, ok := r.URL.Query()["dTime"]; ok {
+		query = append(query, bson.E{"DepartureTime", departureTime[0]})
+	}
+
+	if stationName, ok := r.URL.Query()["sName"]; ok {
+		query = append(query, bson.E{"StationName", stationName[0]})
+	}
+
+	filterCursor, err := collection.Find(
+		context.Background(), query)
+
+	var trainsFiltered []bson.M
+	if err = filterCursor.All(context.TODO(), &trainsFiltered); err != nil {
+		log.Fatal(err)
+	}
+
+	res, _ := json.Marshal(trainsFiltered)
+	w.Write(res)
+}
+func searchDistFun(w http.ResponseWriter, r *http.Request) {
+
+	collection, client := getCollection()
+	defer client.Disconnect(context.TODO())
+
+	sName, _ := r.URL.Query()["sName"]
+	dName, _ := r.URL.Query()["dName"]
+
+	filterCursor, err := collection.Find(
+		context.Background(), bson.M{"StationName": sName[0]})
+
+	var trainsFiltered []bson.M
+	if err = filterCursor.All(context.TODO(), &trainsFiltered); err != nil {
+		log.Fatal(err)
+	}
+
+	//fmt.Println(len(trainsFiltered))
+
+	var trainsFiltered2 []bson.M
+	for _, v := range trainsFiltered {
+		// fmt.Println(i)
+		// fmt.Println(v)
+		str := v["TrainNo"].(string)
+		num := v["SEQ"].(int32)
+
+		//fmt.Println("above")
+		filterCursor2, err := collection.Find(
+			context.TODO(), bson.D{{"TrainNo", str}, {"StationName", dName[0]}}) //{"SEQ", bson.E{"$gt", num}}
+		//fmt.Println("below")
+		//fmt.Println(filterCursor2)
+
+		var temp bson.M
+		var distance int32
+		distance = -1
+		for filterCursor2.Next(context.TODO()) {
+			if err = filterCursor2.Decode(&temp); err != nil {
+				log.Fatal(err)
+			}
+			//fmt.Println(trainsFiltered2)
+			if (temp["SEQ"].(int32)) > num {
+				if distance < 0 || distance > temp["Distance"].(int32) {
+					distance = temp["Distance"].(int32)
+					trainsFiltered2 = append(trainsFiltered2, temp)
+				}
+				//trainsFiltered2 = append(trainsFiltered2, temp)
+			}
+		}
+	}
+
+	resFinal, _ := json.Marshal(trainsFiltered2)
+	w.Write(resFinal)
+
+}
+
 func main() {
 
 	boolInsert := flag.Bool("insert", false, "a bool")
@@ -214,6 +304,9 @@ func main() {
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.HandleFunc("/fetch", fetchFun)
+
+	http.HandleFunc("/search", searchFun)
+	http.HandleFunc("/searchDist", searchDistFun)
 
 	http.ListenAndServe(":8080", nil)
 

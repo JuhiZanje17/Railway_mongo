@@ -9,7 +9,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -24,7 +26,8 @@ const (
 )
 
 var (
-	ch = make(chan bool, channelCapacity)
+	ch                         = make(chan bool, channelCapacity)
+	db, dbCollection, mongoURL = getCredentials("DB"), getCredentials("COLLECTION"), getCredentials("MONGO_URL")
 )
 
 type Train struct {
@@ -76,8 +79,6 @@ func ReadCsv(filename string) ([][]string, error) {
 
 func getCollection() (*mongo.Collection, *mongo.Client) {
 
-	mongoURL := getCredentials("MONGO_URL")
-	db, collection := getCredentials("DB"), getCredentials("COLLECTION")
 	// Set client options
 	clientOptions := options.Client().ApplyURI(mongoURL)
 
@@ -96,7 +97,7 @@ func getCollection() (*mongo.Collection, *mongo.Client) {
 	}
 
 	fmt.Println("Connected to MongoDB!")
-	trainCollection := client.Database(db).Collection(collection)
+	trainCollection := client.Database(db).Collection(dbCollection)
 	return trainCollection, client
 }
 
@@ -230,6 +231,7 @@ func searchFun(w http.ResponseWriter, r *http.Request) {
 	res, _ := json.Marshal(trainsFiltered)
 	w.Write(res)
 }
+
 func searchDistFun(w http.ResponseWriter, r *http.Request) {
 
 	collection, client := getCollection()
@@ -246,42 +248,139 @@ func searchDistFun(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	//fmt.Println(len(trainsFiltered))
-
 	var trainsFiltered2 []bson.M
-	for _, v := range trainsFiltered {
-		// fmt.Println(i)
-		// fmt.Println(v)
-		str := v["TrainNo"].(string)
-		num := v["SEQ"].(int32)
+	var minTrain, maxTrain bson.M
+	var minDistance, maxDistance int32
+	maxDistance, minDistance = -1, -1
 
-		//fmt.Println("above")
+	for _, v := range trainsFiltered {
+
+		tNo := v["TrainNo"].(string)
+		seq := v["SEQ"].(int32)
+		sDist := v["Distance"].(int32)
+
 		filterCursor2, err := collection.Find(
-			context.TODO(), bson.D{{"TrainNo", str}, {"StationName", dName[0]}}) //{"SEQ", bson.E{"$gt", num}}
-		//fmt.Println("below")
-		//fmt.Println(filterCursor2)
+			context.TODO(), bson.D{{"TrainNo", tNo}, {"StationName", dName[0]}}) //{"SEQ", bson.E{"$gt", num}}
 
 		var temp bson.M
-		var distance int32
-		distance = -1
+
 		for filterCursor2.Next(context.TODO()) {
 			if err = filterCursor2.Decode(&temp); err != nil {
 				log.Fatal(err)
 			}
-			//fmt.Println(trainsFiltered2)
-			if (temp["SEQ"].(int32)) > num {
-				if distance < 0 || distance > temp["Distance"].(int32) {
-					distance = temp["Distance"].(int32)
-					trainsFiltered2 = append(trainsFiltered2, temp)
+			if (temp["SEQ"].(int32)) > seq {
+				curDist := (temp["Distance"].(int32)) - sDist
+				if minDistance < 0 || minDistance > curDist {
+					minDistance = curDist
+					minTrain = temp
 				}
-				//trainsFiltered2 = append(trainsFiltered2, temp)
+
+				if maxDistance < curDist {
+					maxDistance = curDist
+					maxTrain = temp
+				}
+
 			}
 		}
+
 	}
+
+	trainsFiltered2 = append(trainsFiltered2, minTrain)
+	trainsFiltered2 = append(trainsFiltered2, maxTrain)
 
 	resFinal, _ := json.Marshal(trainsFiltered2)
 	w.Write(resFinal)
 
+}
+
+func sortDistFunc(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+	st := r.URL.Query().Get("sName")
+	dtn := r.URL.Query().Get("dName")
+
+	collection, client := getCollection()
+	defer client.Disconnect(context.TODO())
+
+	lookupStage := bson.D{{"$lookup", bson.D{{"from", dbCollection}, {"localField", "TrainNo"}, {"foreignField", "TrainNo"}, {"as", "trainData"}}}}
+	unwindStage := bson.D{{"$unwind", bson.D{{"path", "$trainData"}, {"preserveNullAndEmptyArrays", false}}}}
+	filterStage := bson.D{{"$match", bson.D{{"StationName", st}, {"trainData.StationName", dtn}}}}
+	// nextfilterStage := bson.D{{"$match", bson.D{{"seq", bson.D{{"$gt", "trainData.seq"}}}}}}
+	fmt.Println("hi")
+
+	showLoadedCursor, _ := collection.Aggregate(context.TODO(), mongo.Pipeline{lookupStage, unwindStage, filterStage})
+
+	var showsLoaded []bson.M
+
+	count := 0
+	for showLoadedCursor.Next(context.TODO()) {
+		var t bson.M
+		err := showLoadedCursor.Decode(&t)
+		if err != nil {
+			panic(err)
+		}
+		seq := t["SEQ"].(int32)
+		dseq := t["trainData"].(bson.M)["SEQ"].(int32)
+
+		// fmt.Println(seq, dseq)
+		if seq < dseq {
+			count++
+
+			dt := strings.ReplaceAll(t["DepartureTime"].(string), ":", "")                     //departure time from soure
+			at := strings.ReplaceAll(t["trainData"].(bson.M)["ArrivalTime"].(string), ":", "") //arrival time at destination
+
+			dtime, err := time.Parse("150405", dt)
+			if err != nil {
+				log.Fatal(err)
+			}
+			// fmt.Println(dtime)
+
+			atime, err := time.Parse("150405", at)
+			if err != nil {
+				log.Fatal(err)
+			}
+			// fmt.Println(atime)
+
+			t["DeptTime"] = dtime
+			t["ArriTime"] = atime
+
+			diff := atime.Sub(dtime)
+			// if(diff < 0) {
+			// 	diff = dtime.Sub(atime)
+			// }
+			// fmt.Println(diff)
+			out := time.Time{}.Add(diff).String()
+			t["timeTaken"] = out[11:19]
+			showsLoaded = append(showsLoaded, t)
+		}
+	}
+
+	sort.Slice(showsLoaded, func(i, j int) bool {
+
+		dtime, err := time.Parse("150405", strings.ReplaceAll(showsLoaded[i]["timeTaken"].(string), ":", ""))
+		if err != nil {
+			log.Fatal(err)
+		}
+		// fmt.Println(dtime)
+
+		atime, err := time.Parse("150405", strings.ReplaceAll(showsLoaded[j]["timeTaken"].(string), ":", ""))
+		if err != nil {
+			log.Fatal(err)
+		}
+		diff := dtime.Sub(atime)
+		if diff < 0 {
+			return true
+		}
+		return false
+	})
+
+	res, _ := json.Marshal(struct {
+		IsError bool
+		Msg     string
+		Count   int
+		Data    []bson.M
+	}{false, "Data Fetched Successfully", count, showsLoaded})
+	w.Write(res)
 }
 
 func main() {
@@ -307,6 +406,7 @@ func main() {
 
 	http.HandleFunc("/search", searchFun)
 	http.HandleFunc("/searchDist", searchDistFun)
+	http.HandleFunc("/sortDist", sortDistFunc)
 
 	http.ListenAndServe(":8080", nil)
 

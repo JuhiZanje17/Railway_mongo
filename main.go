@@ -394,16 +394,10 @@ func main() {
 		fmt.Println("not inserted")
 	}
 
-	start := time.Now()
-
-	elapsed := time.Since(start)
-	log.Printf("Time taken %s", elapsed)
-
 	fs := http.FileServer(http.Dir("static/"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.HandleFunc("/fetch", fetchFun)
-
 	http.HandleFunc("/search", searchFun)
 	http.HandleFunc("/searchDist", searchDistFun)
 	http.HandleFunc("/sortDist", sortDistFunc)
